@@ -16,7 +16,7 @@
       @keydown.esc="cancelEdit"
       maxlength="64"
     />
-    <span v-else>{{ title }}</span>
+    <span v-else :style="{ fontWeight: fontWeightStyle }">{{ title }}</span>
   </div>
 </template>
 
@@ -31,7 +31,8 @@ const props = defineProps<{
   y: number
   title: string
   selected?: boolean
-  size?: 'small' | 'medium' | 'large'
+  size?: 'small' | 'medium' | 'large' | 'xlarge'
+  fontWeight?: 'regular' | 'bold'
 }>()
 const emits = defineEmits(['update:title', 'drag', 'dragStart', 'dragEnd'])
 
@@ -49,7 +50,12 @@ watch(
 const sizeClass = computed(() => {
   if (props.size === 'small') return 'concept-small'
   if (props.size === 'large') return 'concept-large'
+  if (props.size === 'xlarge') return 'concept-xlarge'
   return 'concept-medium'
+})
+
+const fontWeightStyle = computed(() => {
+  return props.fontWeight === 'bold' ? 'bold' : 'normal'
 })
 
 function startEditing() {
@@ -162,5 +168,12 @@ function onDragEnd() {
   max-width: 420px;
   min-height: 48px;
   padding: 18px 28px;
+}
+.concept-xlarge {
+  font-size: 30px;
+  min-width: 180px;
+  max-width: 600px;
+  min-height: 64px;
+  padding: 28px 38px;
 }
 </style>

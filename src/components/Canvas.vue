@@ -26,6 +26,7 @@
       @wheel.prevent="onWheel"
       @mousemove.capture="updateMouseCoords"
       @click.stop
+      @dblclick="onViewportDblClick"
     >
       <!-- SVG for relations -->
       <svg
@@ -61,7 +62,7 @@
           </marker>
         </defs>
       </svg>
-      <div class="world" @dblclick="onWorldDblClick" @click="handleWorldClick">
+      <div class="world" @click="handleWorldClick">
         <div class="world-content" :style="worldStyle">
           <MindMapConcept
             v-for="concept in concepts"
@@ -70,7 +71,7 @@
             :x="concept.x"
             :y="concept.y"
             :title="concept.title"
-            :selected="selectedConceptId === concept.id"
+            :selected="isConceptSelected(concept.id)"
             :size="concept.size || 'medium'"
             @update:title="updateConceptTitle(concept.id, $event)"
             @drag="dragConcept(concept.id, $event)"
@@ -78,6 +79,7 @@
             @dragEnd="onConceptDragEnd"
             @click="handleConceptClick(concept.id)"
             @contextmenu.prevent="showConceptContextMenu($event, concept.id)"
+            @resize="handleConceptResize"
             :ref="(el) => setConceptRef(concept.id, el)"
           />
         </div>
@@ -93,6 +95,11 @@
           </ul>
         </div>
       </div>
+      <div
+        v-if="marquee.active && mode === 'select'"
+        class="marquee-rect"
+        :style="marqueeRectStyle"
+      ></div>
       <div class="coords-overlay">
         ({{ mouseWorld.x.toFixed(0) }}, {{ mouseWorld.y.toFixed(0) }})
       </div>
@@ -118,16 +125,27 @@
             id="size"
             v-model="selectedConcept.size"
             class="size-select"
-            @change="
-              updateConceptSize(
-                selectedConcept.id,
-                selectedConcept.size as 'small' | 'medium' | 'large',
-              )
-            "
+            @change="updateConceptSize(selectedConcept.id, selectedConcept.size as ConceptSize)"
           >
             <option value="small">Small</option>
             <option value="medium">Medium</option>
             <option value="large">Large</option>
+            <option value="xlarge">Extra Large</option>
+          </select>
+          <label for="fontWeight" style="margin-top: 12px">Font Weight:</label>
+          <select
+            id="fontWeight"
+            v-model="selectedConcept.fontWeight"
+            class="fontweight-select"
+            @change="
+              updateConceptFontWeight(
+                selectedConcept.id,
+                selectedConcept.fontWeight as ConceptFontWeight,
+              )
+            "
+          >
+            <option value="regular">Regular</option>
+            <option value="bold">Bold</option>
           </select>
           <label for="bullets" style="margin-top: 18px">Bullet Points (Markdown):</label>
           <textarea
@@ -153,6 +171,8 @@
       </template>
     </aside>
     <div class="bottombar">
+      <button :class="{ active: mode === 'select' }" @click="mode = 'select'">Select</button>
+      <button :class="{ active: mode === 'pan' }" @click="mode = 'pan'">Pan</button>
       <button :class="{ active: relationMode }" @click="startRelationMode">Relation</button>
       <button @click="exportJSON">Export JSON</button>
       <label class="import-label">
@@ -203,14 +223,17 @@ const viewportRef = ref<HTMLElement | null>(null)
 
 const mouseWorld = ref({ x: 0, y: 0 })
 
-// Concepts state
+type ConceptSize = 'small' | 'medium' | 'large' | 'xlarge'
+type ConceptFontWeight = 'regular' | 'bold'
+
 interface Concept {
   id: number
   x: number
   y: number
   title: string
   bullets: string
-  size?: 'small' | 'medium' | 'large'
+  size?: ConceptSize
+  fontWeight?: ConceptFontWeight
 }
 const concepts = ref<Concept[]>([])
 let nextId = 1
@@ -241,6 +264,31 @@ const contextMenu = ref({ visible: false, x: 0, y: 0, conceptId: null as number 
 const showSidebar = ref(true)
 
 const viewerMode = ref(false)
+
+const mode = ref<'pan' | 'select'>('pan')
+
+const multiSelectedIds = ref<number[]>([])
+const marquee = ref({ active: false, start: { x: 0, y: 0 }, end: { x: 0, y: 0 } })
+
+const marqueeRectStyle = computed(() => {
+  if (!marquee.value.active || mode.value !== 'select') return {}
+  const x1 = Math.min(marquee.value.start.x, marquee.value.end.x)
+  const y1 = Math.min(marquee.value.start.y, marquee.value.end.y)
+  const x2 = Math.max(marquee.value.start.x, marquee.value.end.x)
+  const y2 = Math.max(marquee.value.start.y, marquee.value.end.y)
+  return {
+    left: x1 + 'px',
+    top: y1 + 'px',
+    width: x2 - x1 + 'px',
+    height: y2 - y1 + 'px',
+    position: 'absolute' as const,
+    background: 'rgba(25, 118, 210, 0.13)',
+    border: '2px solid #1976d2',
+    borderRadius: '8px',
+    zIndex: 10,
+    pointerEvents: 'none' as const,
+  }
+})
 
 function setConceptRef(id: number, el: Element | { $el: Element } | null) {
   // If el is a Vue component instance, get its $el
@@ -285,7 +333,12 @@ onMounted(() => {
               typeof c.y === 'number' &&
               typeof c.title === 'string',
           )
-          .map((c) => ({ ...c, bullets: c.bullets ?? '', size: c.size ?? 'medium' }))
+          .map((c) => ({
+            ...c,
+            bullets: c.bullets ?? '',
+            size: c.size ?? 'medium',
+            fontWeight: c.fontWeight ?? 'regular',
+          }))
         // Set nextId to max existing id + 1
         nextId = arr.reduce((max, c) => Math.max(max, c.id), 0) + 1
       }
@@ -399,22 +452,87 @@ const worldStyle = computed(() => ({
 
 function onMouseDown(e: MouseEvent) {
   if (isDraggingConcept.value) return
-  isPanning.value = true
+  const rect = viewportRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+  // Convert to world coordinates
+  const worldX = (mouseX - offset.value.x) / scale.value
+  const worldY = (mouseY - offset.value.y) / scale.value
+  // Check if click is on a concept
+  const hit = concepts.value.find((c) => {
+    const r = conceptRects.value[c.id]
+    if (!r) return false
+    const cx = c.x
+    const cy = c.y
+    const w = r.width / scale.value
+    const h = r.height / scale.value
+    return (
+      worldX >= cx - w / 2 && worldX <= cx + w / 2 && worldY >= cy - h / 2 && worldY <= cy + h / 2
+    )
+  })
+  if (mode.value === 'select' && !hit) {
+    marquee.value.active = true
+    marquee.value.start = { x: mouseX, y: mouseY }
+    marquee.value.end = { x: mouseX, y: mouseY }
+    multiSelectedIds.value = []
+    isPanning.value = false
+  } else if (mode.value === 'pan' && !hit) {
+    isPanning.value = true
+  } else {
+    isPanning.value = false
+  }
   lastMouse.value = { x: e.clientX, y: e.clientY }
 }
 
 function onMouseMove(e: MouseEvent) {
   if (isDraggingConcept.value) return
-  if (!isPanning.value) return
-  const dx = e.clientX - lastMouse.value.x
-  const dy = e.clientY - lastMouse.value.y
-  offset.value.x += dx
-  offset.value.y += dy
-  lastMouse.value = { x: e.clientX, y: e.clientY }
+  const viewportRect = viewportRef.value?.getBoundingClientRect()
+  if (!viewportRect) return
+  const mouseX = e.clientX - viewportRect.left
+  const mouseY = e.clientY - viewportRect.top
+  if (marquee.value.active && mode.value === 'select') {
+    marquee.value.end = { x: mouseX, y: mouseY }
+    // Marquee rectangle in viewport (canvas) coordinates
+    const x1 = Math.min(marquee.value.start.x, marquee.value.end.x)
+    const y1 = Math.min(marquee.value.start.y, marquee.value.end.y)
+    const x2 = Math.max(marquee.value.start.x, marquee.value.end.x)
+    const y2 = Math.max(marquee.value.start.y, marquee.value.end.y)
+    // Select all concepts whose rects (relative to canvas) intersect the marquee
+    multiSelectedIds.value = concepts.value
+      .filter((c) => {
+        const conceptEl = conceptRefs.value[c.id]
+        if (!conceptEl) return false
+        const conceptRect = conceptEl.getBoundingClientRect()
+        // Adjust concept rect to be relative to the canvas
+        const left = conceptRect.left - viewportRect.left
+        const right = conceptRect.right - viewportRect.left
+        const top = conceptRect.top - viewportRect.top
+        const bottom = conceptRect.bottom - viewportRect.top
+        // Marquee box in canvas-relative coordinates
+        return left < x2 && right > x1 && top < y2 && bottom > y1
+      })
+      .map((c) => c.id)
+  } else if (isPanning.value && mode.value === 'pan') {
+    const dx = e.clientX - lastMouse.value.x
+    const dy = e.clientY - lastMouse.value.y
+    offset.value.x += dx
+    offset.value.y += dy
+    lastMouse.value = { x: e.clientX, y: e.clientY }
+  }
 }
 
 function onMouseUp() {
   if (isDraggingConcept.value) return
+  if (marquee.value.active && mode.value === 'select') {
+    marquee.value.active = false
+    // If only one concept is selected, set as selectedConceptId
+    if (multiSelectedIds.value.length === 1) {
+      selectedConceptId.value = multiSelectedIds.value[0]
+    } else if (multiSelectedIds.value.length > 1) {
+      selectedConceptId.value = null
+    }
+  }
   isPanning.value = false
 }
 
@@ -451,13 +569,11 @@ function updateMouseCoords(e: MouseEvent) {
   mouseWorld.value.y = (mouseY - offset.value.y) / scale.value
 }
 
-function onWorldDblClick(e: MouseEvent) {
-  // Get mouse position relative to the viewport
+function onViewportDblClick(e: MouseEvent) {
   const rect = viewportRef.value?.getBoundingClientRect()
   if (!rect) return
   const mouseX = e.clientX - rect.left
   const mouseY = e.clientY - rect.top
-  // Convert to world coordinates
   const worldX = (mouseX - offset.value.x) / scale.value
   const worldY = (mouseY - offset.value.y) / scale.value
   concepts.value.push({
@@ -467,6 +583,7 @@ function onWorldDblClick(e: MouseEvent) {
     title: 'Concept',
     bullets: '',
     size: 'medium',
+    fontWeight: 'regular',
   })
 }
 
@@ -480,16 +597,38 @@ function updateConceptBullets(id: number, newBullets: string) {
   if (c) c.bullets = newBullets
 }
 
-function updateConceptSize(id: number, newSize: 'small' | 'medium' | 'large') {
+function updateConceptSize(id: number, newSize: ConceptSize) {
   const c = concepts.value.find((c) => c.id === id)
   if (c) c.size = newSize
 }
 
-function dragConcept(id: number, pos: { x: number; y: number }) {
+function updateConceptFontWeight(id: number, newWeight: ConceptFontWeight) {
   const c = concepts.value.find((c) => c.id === id)
-  if (c) {
-    c.x = pos.x
-    c.y = pos.y
+  if (c) c.fontWeight = newWeight
+}
+
+function dragConcept(id: number, pos: { x: number; y: number }) {
+  if (multiSelectedIds.value.length > 1 && multiSelectedIds.value.includes(id)) {
+    // Calculate delta
+    const c = concepts.value.find((c) => c.id === id)
+    if (!c) return
+    const dx = pos.x - c.x
+    const dy = pos.y - c.y
+    // Move all selected
+    for (const sid of multiSelectedIds.value) {
+      const sc = concepts.value.find((c) => c.id === sid)
+      if (sc) {
+        sc.x += dx
+        sc.y += dy
+      }
+    }
+  } else {
+    // Single drag
+    const c = concepts.value.find((c) => c.id === id)
+    if (c) {
+      c.x = pos.x
+      c.y = pos.y
+    }
   }
 }
 
@@ -525,7 +664,16 @@ function handleConceptClick(id: number) {
       relationStartConceptId.value = null
     }
   } else {
-    selectConcept(id)
+    // If multi-select is active, clicking a concept inside selection keeps multi-select
+    if (multiSelectedIds.value.length > 1) {
+      if (!multiSelectedIds.value.includes(id)) {
+        multiSelectedIds.value = [id]
+        selectedConceptId.value = id
+      }
+    } else {
+      multiSelectedIds.value = []
+      selectConcept(id)
+    }
   }
 }
 
@@ -708,6 +856,7 @@ function importJSON(e: Event) {
       concepts.value = data.concepts.map((c: Partial<Concept>) => ({
         ...c,
         size: c.size ?? 'medium',
+        fontWeight: c.fontWeight ?? 'regular',
       }))
       relations.value = data.relations
       offset.value = data.offset
@@ -761,6 +910,17 @@ function deselectConcept() {
 
 function renderMarkdown(md: string) {
   return marked.parse(md || '')
+}
+
+function isConceptSelected(id: number) {
+  return multiSelectedIds.value.length > 0
+    ? multiSelectedIds.value.includes(id)
+    : selectedConceptId.value === id
+}
+
+function handleConceptResize(id: number, newSize: 'small' | 'medium' | 'large') {
+  const c = concepts.value.find((c) => c.id === id)
+  if (c) c.size = newSize
 }
 </script>
 
@@ -1100,5 +1260,25 @@ function renderMarkdown(md: string) {
 .viewer-toggle:active {
   background: #bbdefb;
   color: #1976d2;
+}
+.marquee-rect {
+  pointer-events: none;
+  background: rgba(25, 118, 210, 0.13);
+  border: 2px solid #1976d2;
+  border-radius: 8px;
+  position: absolute;
+  z-index: 10;
+}
+.fontweight-select {
+  width: 100%;
+  font-size: 15px;
+  border: 1px solid #bbb;
+  border-radius: 6px;
+  padding: 7px 10px;
+  margin-bottom: 10px;
+  background: #fff;
+  color: #222;
+  margin-top: 0;
+  margin-bottom: 12px;
 }
 </style>
