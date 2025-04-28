@@ -1,7 +1,7 @@
 <template>
   <div
     class="concept"
-    :class="[sizeClass, { selected }]"
+    :class="[sizeClass, fontWeightClass, { selected }]"
     :style="{ left: x + 'px', top: y + 'px' }"
     @mousedown="onDragStart"
     @dblclick.stop="startEditing"
@@ -16,7 +16,7 @@
       @keydown.esc="cancelEdit"
       maxlength="64"
     />
-    <span v-else :style="{ fontWeight: fontWeightStyle }">{{ title }}</span>
+    <span v-else :class="['concept-title', fontWeightClass]">{{ title }}</span>
   </div>
 </template>
 
@@ -54,8 +54,8 @@ const sizeClass = computed(() => {
   return 'concept-medium'
 })
 
-const fontWeightStyle = computed(() => {
-  return props.fontWeight === 'bold' ? 'bold' : 'normal'
+const fontWeightClass = computed(() => {
+  return props.fontWeight === 'bold' ? 'fontweight-bold' : 'fontweight-regular'
 })
 
 function startEditing() {
@@ -146,6 +146,15 @@ function onDragEnd() {
   background: #fff;
   color: #111;
   padding: 0;
+}
+.concept-title {
+  font-weight: normal !important;
+}
+.fontweight-bold {
+  font-weight: bold !important;
+}
+.fontweight-regular {
+  font-weight: normal !important;
 }
 /* Size variants */
 .concept-small {

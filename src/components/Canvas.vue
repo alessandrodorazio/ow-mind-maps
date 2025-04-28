@@ -73,6 +73,7 @@
             :title="concept.title"
             :selected="isConceptSelected(concept.id)"
             :size="concept.size || 'medium'"
+            :fontWeight="concept.fontWeight || 'regular'"
             @update:title="updateConceptTitle(concept.id, $event)"
             @drag="dragConcept(concept.id, $event)"
             @dragStart="onConceptDragStart"
@@ -795,12 +796,21 @@ function showConceptContextMenu(e: MouseEvent, id: number) {
   contextMenu.value.x = e.clientX
   contextMenu.value.y = e.clientY
   contextMenu.value.conceptId = id
-  document.addEventListener('click', hideContextMenu, { once: true })
+  // Add a document click listener to close the menu when clicking outside
+  document.addEventListener('mousedown', onDocumentClickContextMenu)
 }
 
 function hideContextMenu() {
   contextMenu.value.visible = false
   contextMenu.value.conceptId = null
+  document.removeEventListener('mousedown', onDocumentClickContextMenu)
+}
+
+function onDocumentClickContextMenu(e: MouseEvent) {
+  const menu = document.querySelector('.context-menu')
+  if (menu && !menu.contains(e.target as Node)) {
+    hideContextMenu()
+  }
 }
 
 function deleteConcept(id: number) {
