@@ -645,15 +645,12 @@ function deleteConcept(id: number) {
 }
 
 function onKeydown(e: KeyboardEvent) {
-  if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (selectedRelationId.value !== null) {
-      const idx = relations.value.findIndex((r) => r.id === selectedRelationId.value)
-      if (idx !== -1) {
-        relations.value.splice(idx, 1)
-        selectedRelationId.value = null
-      }
-    } else if (selectedConceptId.value !== null) {
-      deleteConcept(selectedConceptId.value)
+  // Only allow relation deletion by key if a relation is selected
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selectedRelationId.value !== null) {
+    const idx = relations.value.findIndex((r) => r.id === selectedRelationId.value)
+    if (idx !== -1) {
+      relations.value.splice(idx, 1)
+      selectedRelationId.value = null
     }
   }
 }
