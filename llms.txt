@@ -1,0 +1,43 @@
+# Technical Summary for Mind Map App (llms.txt)
+
+## Data Structures
+- **Concept**: { id: number, x: number, y: number, title: string, bullets: string }
+- **Relation**: { id: number, from: number, to: number }
+- **concepts**: Array of Concept objects (reactive, persisted in localStorage)
+- **relations**: Array of Relation objects (reactive, persisted in localStorage)
+
+## Canvas & Viewport
+- Canvas fills the viewport (100vw x 100vh), with a grid background that moves/scales with pan/zoom.
+- Pan is managed by `offset` (x, y), and zoom by `scale` (float, min 0.2, max 3).
+- Pan and zoom are persisted in localStorage.
+- Zoom is centered on the mouse cursor using the standard 'zoom to cursor' algorithm.
+
+## Concepts (Nodes)
+- Rendered as absolutely positioned divs, draggable, editable (title and Markdown bullets).
+- Selected concept is highlighted with a blue border.
+- Double-click on empty canvas adds a new concept at that position.
+- Single-click selects a concept and shows its details in the right sidebar.
+- Dragging a concept disables canvas panning.
+- Each concept's DOM element is measured for pixel-perfect relation rendering.
+
+## Relations (Links)
+- Created by clicking the 'relation' button, then selecting two concepts (start and end).
+- Rendered as SVG lines/arrows between the real edge of each concept (using DOMRect intersection for pixel-perfect accuracy).
+- Multiple relations per concept are allowed.
+- Clicking a line selects it (highlighted in red); pressing Delete/Backspace removes it.
+- Clicking the canvas background deselects the line.
+- Relations are listed in the right sidebar for the selected concept.
+
+## UI
+- Left sidebar: List of all concepts with coordinates.
+- Right sidebar: Details and Markdown bullets for the selected concept, plus a list of its relations.
+- Bottom bar: 'Relation' button to enter relation-creation mode, with hints.
+- Coordinates overlay in the top right shows current world coordinates under the mouse.
+
+## Persistence
+- All concepts, relations, pan/zoom state are saved in localStorage and restored on reload.
+
+## Other
+- Grid background is always visible and fills the viewport, scaling and moving with pan/zoom.
+- All pointer events are managed so that concepts, lines, and canvas background are interactable as expected.
+- The code is written in Vue 3 with <script setup> syntax. 
