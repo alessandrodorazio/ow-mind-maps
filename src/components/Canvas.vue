@@ -430,10 +430,12 @@ function updateMouseCoords(e: MouseEvent) {
 }
 
 function onWorldDblClick(e: MouseEvent) {
-  // Get mouse position relative to .world
-  const worldRect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  const mouseX = e.clientX - worldRect.left
-  const mouseY = e.clientY - worldRect.top
+  // Get mouse position relative to the viewport
+  const rect = viewportRef.value?.getBoundingClientRect()
+  if (!rect) return
+  const mouseX = e.clientX - rect.left
+  const mouseY = e.clientY - rect.top
+  // Convert to world coordinates
   const worldX = (mouseX - offset.value.x) / scale.value
   const worldY = (mouseY - offset.value.y) / scale.value
   concepts.value.push({
