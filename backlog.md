@@ -41,3 +41,15 @@ Description: After R2, R3 and R4, the user have the function to export the conce
 Status: To Do
 Task: Undo/Redo
 Description: When doing every management operation (concepts or relations), there must be the possibility to undo and redo the edits
+
+## R7
+
+Status: Completed
+Task: Viewer mode
+Description: The user can choose to use the viewer mode through a button in the bottom bar. In this case, the user will see the right modal as paragraphs, not editable.
+
+## R8
+
+Status: Completed
+Task: Hide left toolbar
+Description: The user must be able to hide the left toolbar, containing the list of concepts. It must also be possible to readd it.

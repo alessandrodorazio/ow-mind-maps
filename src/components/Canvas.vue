@@ -1,6 +1,6 @@
 <template>
   <div class="mindmap-layout" @click="deselectRelation">
-    <aside class="sidebar">
+    <aside v-if="showSidebar" class="sidebar" :class="{ 'sidebar-hidden': !showSidebar }">
       <h2>Concepts</h2>
       <ul>
         <li
@@ -99,48 +99,54 @@
     </div>
     <aside class="rightbar">
       <template v-if="selectedConcept">
-        <label for="title">Title:</label>
-        <input
-          id="title"
-          v-model="selectedConcept.title"
-          class="title-input"
-          @input="updateConceptTitle(selectedConcept.id, selectedConcept.title)"
-          maxlength="64"
-          autocomplete="off"
-        />
-        <label for="size" style="margin-top: 12px">Size:</label>
-        <select
-          id="size"
-          v-model="selectedConcept.size"
-          class="size-select"
-          @change="
-            updateConceptSize(
-              selectedConcept.id,
-              selectedConcept.size as 'small' | 'medium' | 'large',
-            )
-          "
-        >
-          <option value="small">Small</option>
-          <option value="medium">Medium</option>
-          <option value="large">Large</option>
-        </select>
-        <label for="bullets" style="margin-top: 18px">Bullet Points (Markdown):</label>
-        <textarea
-          id="bullets"
-          v-model="selectedConcept.bullets"
-          class="bullets-input"
-          placeholder="- Bullet 1\n- Bullet 2"
-          @input="updateConceptBullets(selectedConcept.id, selectedConcept.bullets)"
-        ></textarea>
-        <div class="relations-list">
-          <h3>Relations</h3>
-          <ul>
-            <li v-for="rel in getConceptRelations(selectedConcept.id)" :key="rel.id">
-              <span v-if="rel.from === selectedConcept.id">→ {{ getConceptTitle(rel.to) }}</span>
-              <span v-else>← {{ getConceptTitle(rel.from) }}</span>
-            </li>
-          </ul>
-        </div>
+        <template v-if="viewerMode">
+          <div class="viewer-title">{{ selectedConcept.title }}</div>
+          <div class="viewer-desc" v-html="renderMarkdown(selectedConcept.bullets)"></div>
+        </template>
+        <template v-else>
+          <label for="title">Title:</label>
+          <input
+            id="title"
+            v-model="selectedConcept.title"
+            class="title-input"
+            @input="updateConceptTitle(selectedConcept.id, selectedConcept.title)"
+            maxlength="64"
+            autocomplete="off"
+          />
+          <label for="size" style="margin-top: 12px">Size:</label>
+          <select
+            id="size"
+            v-model="selectedConcept.size"
+            class="size-select"
+            @change="
+              updateConceptSize(
+                selectedConcept.id,
+                selectedConcept.size as 'small' | 'medium' | 'large',
+              )
+            "
+          >
+            <option value="small">Small</option>
+            <option value="medium">Medium</option>
+            <option value="large">Large</option>
+          </select>
+          <label for="bullets" style="margin-top: 18px">Bullet Points (Markdown):</label>
+          <textarea
+            id="bullets"
+            v-model="selectedConcept.bullets"
+            class="bullets-input"
+            placeholder="- Bullet 1\n- Bullet 2"
+            @input="updateConceptBullets(selectedConcept.id, selectedConcept.bullets)"
+          ></textarea>
+          <div class="relations-list">
+            <h3>Relations</h3>
+            <ul>
+              <li v-for="rel in getConceptRelations(selectedConcept.id)" :key="rel.id">
+                <span v-if="rel.from === selectedConcept.id">→ {{ getConceptTitle(rel.to) }}</span>
+                <span v-else>← {{ getConceptTitle(rel.from) }}</span>
+              </li>
+            </ul>
+          </div>
+        </template>
       </template>
       <template v-else>
         <div class="placeholder">Select a concept to edit bullet points.</div>
@@ -153,6 +159,17 @@
         Import JSON
         <input type="file" accept="application/json" @change="importJSON" style="display: none" />
       </label>
+      <button class="sidebar-toggle" @click="showSidebar = !showSidebar">
+        <span v-if="showSidebar">⟨ Hide</span>
+        <span v-else>Show ⟩</span>
+      </button>
+      <button
+        class="viewer-toggle"
+        :class="{ active: viewerMode }"
+        @click="viewerMode = !viewerMode"
+      >
+        Viewer Mode
+      </button>
       <span v-if="relationMode" class="relation-hint">
         <template v-if="relationStartConceptId === null">
           Click a concept to start a relation
@@ -168,6 +185,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, defineOptions, watch, nextTick, onBeforeUnmount } from 'vue'
 import MindMapConcept from './Concept.vue'
+import { marked } from 'marked'
 
 defineOptions({ name: 'MindMapCanvas' })
 
@@ -219,6 +237,10 @@ const conceptRects = ref<Record<number, DOMRect>>({})
 const selectedRelationId = ref<number | null>(null)
 
 const contextMenu = ref({ visible: false, x: 0, y: 0, conceptId: null as number | null })
+
+const showSidebar = ref(true)
+
+const viewerMode = ref(false)
 
 function setConceptRef(id: number, el: Element | { $el: Element } | null) {
   // If el is a Vue component instance, get its $el
@@ -736,6 +758,10 @@ function handleWorldClick(e: MouseEvent) {
 function deselectConcept() {
   selectedConceptId.value = null
 }
+
+function renderMarkdown(md: string) {
+  return marked.parse(md || '')
+}
 </script>
 
 <style scoped>
@@ -755,6 +781,14 @@ function deselectConcept() {
   z-index: 20;
   box-shadow: 2px 0 8px rgba(0, 0, 0, 0.03);
   overflow-y: auto;
+  transition:
+    margin-left 0.25s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.2s;
+}
+.sidebar-hidden {
+  margin-left: -240px;
+  opacity: 0;
+  pointer-events: none;
 }
 .sidebar h2 {
   font-size: 18px;
@@ -859,50 +893,71 @@ function deselectConcept() {
 }
 .bottombar {
   position: fixed;
-  left: 240px;
-  right: 340px;
-  bottom: 0;
-  height: 54px;
-  background: #f4f4fa;
-  border-top: 1px solid #d3d3e7;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  margin: 0 auto;
+  width: fit-content;
+  min-width: 340px;
+  max-width: 80vw;
   display: flex;
   align-items: center;
-  padding: 0 24px;
-  z-index: 30;
-  gap: 18px;
+  justify-content: center;
+  gap: 22px;
+  padding: 12px 32px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.75);
+  box-shadow:
+    0 8px 32px 0 rgba(30, 30, 60, 0.18),
+    0 1.5px 8px 0 rgba(30, 30, 60, 0.1);
+  backdrop-filter: blur(16px) saturate(1.2);
+  z-index: 40;
+  border: 1.5px solid rgba(180, 180, 220, 0.18);
+  transition:
+    background 0.18s,
+    box-shadow 0.18s;
 }
-.bottombar button {
-  background: #1976d2;
-  color: #fff;
-  border: none;
-  border-radius: 6px;
-  padding: 8px 22px;
-  font-size: 16px;
+.bottombar button,
+.bottombar .sidebar-toggle,
+.bottombar .import-label {
+  height: 44px;
+  min-width: 44px;
+  border-radius: 14px;
+  font-size: 18px;
   font-weight: 600;
+  box-shadow: 0 2px 8px rgba(30, 30, 60, 0.08);
+  margin: 0 2px;
+  padding: 0 22px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1976d2;
+  border: 1.5px solid #b0c4de;
+  transition:
+    background 0.13s,
+    color 0.13s,
+    box-shadow 0.13s,
+    border 0.13s;
   cursor: pointer;
-  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .bottombar button.active {
-  background: #1565c0;
-}
-.import-label {
-  background: #fff;
-  color: #1976d2;
+  background: #1976d2;
+  color: #fff;
   border: 1.5px solid #1976d2;
-  border-radius: 6px;
-  padding: 7px 20px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  margin-left: 0;
-  margin-right: 0;
-  transition:
-    background 0.15s,
-    color 0.15s;
-  display: inline-block;
 }
-.import-label:hover {
+.bottombar button:hover,
+.bottombar .sidebar-toggle:hover,
+.bottombar .import-label:hover {
   background: #e3f2fd;
+  color: #1565c0;
+  box-shadow: 0 4px 16px rgba(30, 30, 60, 0.13);
+}
+.bottombar button:active,
+.bottombar .sidebar-toggle:active,
+.bottombar .import-label:active {
+  background: #bbdefb;
+  color: #1976d2;
 }
 .relation-hint {
   color: #1976d2;
@@ -974,5 +1029,76 @@ function deselectConcept() {
   color: #222;
   margin-top: 0;
   margin-bottom: 12px;
+}
+.sidebar-toggle {
+  background: #fff;
+  color: #1976d2;
+  border: 1.5px solid #1976d2;
+  border-radius: 6px;
+  padding: 7px 20px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 0;
+  margin-right: 0;
+  transition:
+    background 0.15s,
+    color 0.15s;
+  display: inline-block;
+}
+.sidebar-toggle:hover {
+  background: #e3f2fd;
+}
+.viewer-title {
+  font-size: 22px;
+  font-weight: 700;
+  margin-bottom: 18px;
+  color: #1976d2;
+}
+.viewer-desc {
+  font-size: 16px;
+  color: #222;
+  background: #fff;
+  border-radius: 8px;
+  padding: 12px 14px;
+  min-height: 48px;
+  white-space: pre-line;
+  word-break: break-word;
+}
+.viewer-toggle {
+  background: #fff;
+  color: #1976d2;
+  border: 1.5px solid #1976d2;
+  border-radius: 14px;
+  font-size: 18px;
+  font-weight: 600;
+  height: 44px;
+  min-width: 44px;
+  margin: 0 2px;
+  padding: 0 22px;
+  box-shadow: 0 2px 8px rgba(30, 30, 60, 0.08);
+  transition:
+    background 0.13s,
+    color 0.13s,
+    box-shadow 0.13s,
+    border 0.13s;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.viewer-toggle.active {
+  background: #1976d2;
+  color: #fff;
+  border: 1.5px solid #1976d2;
+}
+.viewer-toggle:hover {
+  background: #e3f2fd;
+  color: #1565c0;
+  box-shadow: 0 4px 16px rgba(30, 30, 60, 0.13);
+}
+.viewer-toggle:active {
+  background: #bbdefb;
+  color: #1976d2;
 }
 </style>
